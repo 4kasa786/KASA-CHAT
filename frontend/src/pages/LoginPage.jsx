@@ -85,7 +85,7 @@ const LoginPage = () => {
                         </div>
 
                         <button type="submit" className="btn btn-primary w-full" disabled={isLoggingIn}>
-                            {isLoggingIn ? (
+                            {isLoggingIng ? (
                                 <>
                                     <Loader2 className="h-5 w-5 animate-spin" />
                                     Loading...
