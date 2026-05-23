@@ -19,7 +19,11 @@ const userSchema = new mongoose.Schema({
     profilePic: {
         type: String,
         default: ""
-    }
+    },
+    isBot: {
+        type: Boolean,
+        default: false,
+    },
 }, { timestamps: true })
 
 const User = mongoose.model('User', userSchema);

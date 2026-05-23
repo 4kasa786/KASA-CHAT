@@ -4,6 +4,7 @@ import cookieParser from 'cookie-parser';
 import authRoutes from "./routes/auth.route.js";
 import messageRoutes from "./routes/message.route.js";
 import { connectDB } from './lib/db.js';
+import { seedAIBot } from './seeds/ai-bot.seed.js';
 import cors from 'cors';
 import { app, server } from './lib/socket.js';
 import path from 'path';
@@ -31,7 +32,8 @@ if (process.env.NODE_ENV === "production") {
     })
 }
 
-server.listen(port, () => {
+server.listen(port, async () => {
     console.log("Server is running on port " + port);
-    connectDB();
+    await connectDB();
+    await seedAIBot();
 })
