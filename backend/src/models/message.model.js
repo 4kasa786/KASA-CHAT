@@ -16,6 +16,15 @@ const messageSchema = new mongoose.Schema({
     },
     image: {
         type: String,
+    },
+    isBot: {
+        type: Boolean,
+        default: false,
+    },
+    conversationWith: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        default: null,
     }
 }, { timestamps: true });
 
