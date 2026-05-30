@@ -71,8 +71,36 @@ export const sendMessage = async (req, res) => {
             (async () => {
                 let botReplyText;
                 try {
-                    const prompt = text.replace(/^@ai\s*/i, "").trim();
-                    botReplyText = await getAIReply(prompt);
+                    // Fetch the last 20 messages of this DM for context — same 3-clause
+                    // filter as getMessages, minus the message that just triggered the bot.
+                    const recent = await Message.find({
+                        _id: { $ne: newMessage._id },
+                        $or: [
+                            { senderId, receiverId },
+                            { senderId: receiverId, receiverId: senderId },
+                            { isBot: true, receiverId: senderId, conversationWith: receiverId },
+                        ],
+                    })
+                        .sort({ createdAt: -1 })
+                        .limit(20)
+                        .lean();
+                    recent.reverse(); // newest-first query → back to chronological order
+
+                    // Label each line so Gemini knows who said what (sender / receiver / AI).
+                    const receiver = await User.findById(receiverId).select("fullName");
+                    const senderName = req.user.fullName;
+                    const receiverName = receiver?.fullName || "User";
+                    const history = recent.map((m) => ({
+                        name: m.isBot
+                            ? "AI"
+                            : String(m.senderId) === String(senderId)
+                                ? senderName
+                                : receiverName,
+                        text: m.text,
+                    }));
+
+                    const prompt = text.trim().replace(/^@ai\s*/i, "").trim();
+                    botReplyText = await getAIReply(prompt, history);
                 } catch (err) {
                     console.error("Gemini API error:", err);
                     botReplyText = err.message?.includes("429")
