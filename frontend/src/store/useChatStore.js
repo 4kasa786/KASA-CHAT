@@ -10,6 +10,14 @@ export const useChatStore = create((set, get) => ({
     isUsersLoading: false,
     isMessagesLoading: false,
 
+    // --- Semantic search (Phase 6) ---
+    searchResults: [],
+    isSearching: false,
+    searchError: null,
+    hasSearched: false,
+    isSearchOpen: false,
+    scrollToMessageId: null,
+
 
     getUsers: async () => {
         set({ isUsersLoading: true });
@@ -71,5 +79,53 @@ export const useChatStore = create((set, get) => ({
 
     setSelectedUser: (selectedUser) => {
         set({ selectedUser });
-    }
+    },
+
+    // --- Semantic search actions (Phase 6) ---
+    openSearch: () => set({ isSearchOpen: true }),
+    closeSearch: () =>
+        set({ isSearchOpen: false, searchResults: [], searchError: null, hasSearched: false }),
+
+    searchMessages: async (query) => {
+        if (!query.trim()) {
+            set({ searchResults: [], searchError: null, hasSearched: false });
+            return;
+        }
+        set({ isSearching: true, searchError: null });
+        try {
+            const response = await axiosInstance.post('/search', { query });
+            set({ searchResults: response.data, hasSearched: true });
+        } catch (err) {
+            set({ searchError: err.response?.data?.error || "Search failed. Please try again." });
+        } finally {
+            set({ isSearching: false });
+        }
+    },
+
+    // Click a search result → open that conversation and flag the message to scroll to.
+    goToMessage: (result) => {
+        const { users } = get();
+        const myId = useAuthStore.getState().authUser?._id;
+
+        // Figure out the "other" person in that message's conversation.
+        let otherId;
+        if (result.isBot) otherId = result.conversationWith;
+        else otherId = result.senderId === myId ? result.receiverId : result.senderId;
+
+        const otherUser = users.find((u) => u._id === otherId);
+        if (!otherUser) {
+            toast.error("Couldn't open that conversation");
+            return;
+        }
+
+        set({
+            selectedUser: otherUser,
+            scrollToMessageId: result._id,
+            isSearchOpen: false,
+            searchResults: [],
+            hasSearched: false,
+        });
+    },
+
+    setScrollToMessageId: (id) => set({ scrollToMessageId: id }),
 }))

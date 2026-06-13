@@ -15,6 +15,8 @@ const ChatContainer = () => {
         selectedUser,
         subscribeToMessages,
         unsubscribeFromMessages,
+        scrollToMessageId,
+        setScrollToMessageId,
     } = useChatStore();
     const { authUser } = useAuthStore();
     const messageEndRef = useRef(null);
@@ -28,10 +30,27 @@ const ChatContainer = () => {
     }, [selectedUser._id, getMessages, subscribeToMessages, unsubscribeFromMessages]);
 
     useEffect(() => {
+        // If we arrived here from a search result, don't auto-scroll to the bottom —
+        // the effect below scrolls to the matched message instead.
+        if (scrollToMessageId) return;
         if (messageEndRef.current && messages) {
             messageEndRef.current.scrollIntoView({ behavior: "smooth" });
         }
-    }, [messages]);
+    }, [messages, scrollToMessageId]);
+
+    // Scroll to and briefly highlight a message opened from search.
+    useEffect(() => {
+        if (!scrollToMessageId || isMessagesLoading) return;
+        const el = document.getElementById(`msg-${scrollToMessageId}`);
+        if (!el) return;
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+        el.classList.add("ring-2", "ring-primary", "rounded-lg");
+        const timer = setTimeout(() => {
+            el.classList.remove("ring-2", "ring-primary", "rounded-lg");
+            setScrollToMessageId(null);
+        }, 2000);
+        return () => clearTimeout(timer);
+    }, [scrollToMessageId, messages, isMessagesLoading, setScrollToMessageId]);
 
     if (isMessagesLoading) {
         return (
@@ -51,6 +70,7 @@ const ChatContainer = () => {
                 {messages.map((message) => (
                     <div
                         key={message._id}
+                        id={`msg-${message._id}`}
                         className={`chat ${message.isBot || message.senderId !== authUser._id ? "chat-start" : "chat-end"}`}
                         ref={messageEndRef}
                     >
