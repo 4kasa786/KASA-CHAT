@@ -5,6 +5,7 @@ import authRoutes from "./routes/auth.route.js";
 import messageRoutes from "./routes/message.route.js";
 import { connectDB } from './lib/db.js';
 import { seedAIBot } from './seeds/ai-bot.seed.js';
+import { warmUpEmbeddings } from './services/embedding.js';
 import cors from 'cors';
 import { app, server } from './lib/socket.js';
 import path from 'path';
@@ -36,4 +37,6 @@ server.listen(port, async () => {
     console.log("Server is running on port " + port);
     await connectDB();
     await seedAIBot();
+    const warmMs = await warmUpEmbeddings();
+    console.log(`Embedding model warmed up in ${warmMs}ms`);
 })

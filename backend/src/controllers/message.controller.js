@@ -1,6 +1,7 @@
 import User from "../models/user.model.js";
 import Message from "../models/message.model.js";
 import { getAIReply } from "../services/ai.js";
+import { getEmbedding } from "../services/embedding.js";
 import { getAIBotId } from "../seeds/ai-bot.seed.js";
 import cloudinary from "../lib/cloudinary.js";
 import { getReceiverSocketId, io } from "../lib/socket.js";
@@ -56,6 +57,16 @@ export const sendMessage = async (req, res) => {
             text,
             image: imageUrl,
         });
+
+        // Embed text inline so the message is searchable (Phase 5). ~50ms once warm.
+        // Image-only messages have no text to embed. Never block the send on this.
+        if (text) {
+            try {
+                newMessage.embedding = await getEmbedding(text);
+            } catch (err) {
+                console.error("Embedding failed for user message:", err.message);
+            }
+        }
 
         await newMessage.save();
 
@@ -114,6 +125,16 @@ export const sendMessage = async (req, res) => {
                     isBot: true,
                     conversationWith: receiverId,
                 });
+
+                // Embed the bot reply too, so it's searchable like any other message.
+                if (botReplyText) {
+                    try {
+                        botMessage.embedding = await getEmbedding(botReplyText);
+                    } catch (err) {
+                        console.error("Embedding failed for bot message:", err.message);
+                    }
+                }
+
                 await botMessage.save();
 
                 const senderSocketId = getReceiverSocketId(senderId);
