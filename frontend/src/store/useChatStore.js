@@ -18,11 +18,12 @@ export const useChatStore = create((set, get) => ({
     isSearchOpen: false,
     scrollToMessageId: null,
 
-    // --- Ask AI about this chat / RAG (Phase 7) ---
+    // --- Ask AI about this chat / RAG (Phase 7, streaming) ---
     isAskOpen: false,
     askAnswer: "",
     askSources: [],
     isAsking: false,
+    isStreaming: false,
     askError: null,
     hasAsked: false,
 
@@ -143,24 +144,57 @@ export const useChatStore = create((set, get) => ({
     openAsk: () => set({ isAskOpen: true, askAnswer: "", askSources: [], askError: null, hasAsked: false }),
     closeAsk: () => set({ isAskOpen: false, askAnswer: "", askSources: [], askError: null, hasAsked: false }),
 
+    // Streams the grounded answer over SSE (axios can't stream → raw fetch).
     askAboutChat: async (question) => {
         const { selectedUser } = get();
         if (!question.trim() || !selectedUser) return;
-        set({ isAsking: true, askError: null });
+        set({ isAsking: true, isStreaming: true, askError: null, askAnswer: "", askSources: [], hasAsked: false });
+
         try {
-            const response = await axiosInstance.post('/search/ask', {
-                question,
-                userId: selectedUser._id,
+            const res = await fetch(`${axiosInstance.defaults.baseURL}/search/ask`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                credentials: "include",
+                body: JSON.stringify({ question, userId: selectedUser._id }),
             });
-            set({
-                askAnswer: response.data.answer,
-                askSources: response.data.sources,
-                hasAsked: true,
-            });
-        } catch (err) {
-            set({ askError: err.response?.data?.error || "Couldn't get an answer. Please try again." });
+            if (!res.ok || !res.body) throw new Error("Request failed");
+
+            const reader = res.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = "";
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+
+                // SSE events are separated by a blank line.
+                const events = buffer.split("\n\n");
+                buffer = events.pop(); // keep any incomplete trailing event
+                for (const block of events) {
+                    if (!block.trim()) continue;
+                    const event = block.match(/^event: (.+)$/m)?.[1] || "message";
+                    const dataLine = block.match(/^data: (.+)$/m)?.[1];
+                    if (!dataLine) continue;
+                    const data = JSON.parse(dataLine);
+
+                    if (event === "sources") {
+                        set({ askSources: data });
+                    } else if (event === "chunk") {
+                        set((state) => ({
+                            askAnswer: state.askAnswer + data.text,
+                            hasAsked: true,
+                            isAsking: false, // first chunk arrived → show the answer
+                        }));
+                    } else if (event === "error") {
+                        set({ askError: data.error || "Couldn't get an answer." });
+                    }
+                }
+            }
+        } catch {
+            set({ askError: "Couldn't get an answer. Please try again." });
         } finally {
-            set({ isAsking: false });
+            set({ isAsking: false, isStreaming: false });
         }
     },
 }))

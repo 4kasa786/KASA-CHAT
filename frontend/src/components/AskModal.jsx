@@ -8,6 +8,7 @@ const AskModal = () => {
         askAnswer,
         askSources,
         isAsking,
+        isStreaming,
         askError,
         hasAsked,
         closeAsk,
@@ -68,27 +69,28 @@ const AskModal = () => {
 
                 {/* Answer + citations */}
                 <div className="overflow-y-auto p-4">
-                    {isAsking && (
-                        <div className="flex items-center justify-center gap-2 py-8 text-sm opacity-70">
-                            <Loader2 className="size-4 animate-spin" /> Thinking...
-                        </div>
-                    )}
-
-                    {!isAsking && askError && (
+                    {askError && (
                         <div className="py-8 text-center text-sm text-error">{askError}</div>
                     )}
 
-                    {!isAsking && !askError && !hasAsked && (
+                    {!askError && !isStreaming && !hasAsked && (
                         <div className="py-8 text-center text-sm opacity-50">
                             Ask anything about this conversation. The answer comes only from your messages, with sources you can click.
                         </div>
                     )}
 
-                    {!isAsking && !askError && hasAsked && (
+                    {!askError && (isStreaming || hasAsked) && (
                         <>
-                            {/* The grounded answer */}
-                            <div className="bg-base-200 rounded-lg p-3 text-sm whitespace-pre-wrap">
-                                {askAnswer}
+                            {/* The grounded answer — box + cursor appear immediately, text streams in */}
+                            <div className="bg-base-200 rounded-lg p-3 text-sm whitespace-pre-wrap min-h-[2.75rem] flex items-center gap-1">
+                                {askAnswer ? (
+                                    <span>{askAnswer}</span>
+                                ) : (
+                                    isStreaming && <span className="opacity-50 flex items-center gap-2"><Loader2 className="size-3.5 animate-spin" /> Thinking…</span>
+                                )}
+                                {isStreaming && askAnswer && (
+                                    <span className="inline-block w-1.5 h-4 align-middle bg-primary/70 animate-pulse" />
+                                )}
                             </div>
 
                             {/* Citation cards — click to jump to the source message */}

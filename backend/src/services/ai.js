@@ -10,7 +10,7 @@ If the history does not contain the answer, say so honestly instead of guessing.
 Keep replies short and conversational.`;
 
 const model = genAI.getGenerativeModel({
-    model: "gemini-2.5-flash",
+    model: "gemini-2.5-flash-lite",
     systemInstruction: SYSTEM_INSTRUCTION,
 });
 
@@ -22,7 +22,7 @@ When you use a message, cite it inline like [1] or [2].
 Keep the answer short and direct.`;
 
 const ragModel = genAI.getGenerativeModel({
-    model: "gemini-2.5-flash",
+    model: "gemini-2.5-flash-lite",
     systemInstruction: RAG_SYSTEM_INSTRUCTION,
 });
 
@@ -94,4 +94,16 @@ export const getGroundedAnswer = async (question, sources = []) => {
     } finally {
         clearTimeout(timer);
     }
+};
+
+// Streaming variant (Phase 7+ streaming). Returns Gemini's async-iterable chunk
+// stream; the controller forwards each chunk to the client over SSE.
+export const streamGroundedAnswer = async (question, sources = []) => {
+    const context = sources
+        .map((s, i) => `[${i + 1}] ${s.senderName || "Unknown"}: ${s.text}`)
+        .join("\n");
+    const prompt = `Context messages:\n${context}\n\nQuestion: ${question}`;
+
+    const result = await ragModel.generateContentStream(prompt);
+    return result.stream; // async iterable of response chunks; each has .text()
 };
