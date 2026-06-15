@@ -18,6 +18,14 @@ export const useChatStore = create((set, get) => ({
     isSearchOpen: false,
     scrollToMessageId: null,
 
+    // --- Ask AI about this chat / RAG (Phase 7) ---
+    isAskOpen: false,
+    askAnswer: "",
+    askSources: [],
+    isAsking: false,
+    askError: null,
+    hasAsked: false,
+
 
     getUsers: async () => {
         set({ isUsersLoading: true });
@@ -124,8 +132,35 @@ export const useChatStore = create((set, get) => ({
             isSearchOpen: false,
             searchResults: [],
             hasSearched: false,
+            // also close the Ask-AI panel if a citation was clicked
+            isAskOpen: false,
         });
     },
 
     setScrollToMessageId: (id) => set({ scrollToMessageId: id }),
+
+    // --- Ask AI about this chat / RAG (Phase 7) ---
+    openAsk: () => set({ isAskOpen: true, askAnswer: "", askSources: [], askError: null, hasAsked: false }),
+    closeAsk: () => set({ isAskOpen: false, askAnswer: "", askSources: [], askError: null, hasAsked: false }),
+
+    askAboutChat: async (question) => {
+        const { selectedUser } = get();
+        if (!question.trim() || !selectedUser) return;
+        set({ isAsking: true, askError: null });
+        try {
+            const response = await axiosInstance.post('/search/ask', {
+                question,
+                userId: selectedUser._id,
+            });
+            set({
+                askAnswer: response.data.answer,
+                askSources: response.data.sources,
+                hasAsked: true,
+            });
+        } catch (err) {
+            set({ askError: err.response?.data?.error || "Couldn't get an answer. Please try again." });
+        } finally {
+            set({ isAsking: false });
+        }
+    },
 }))

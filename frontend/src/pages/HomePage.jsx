@@ -4,10 +4,11 @@ import Sidebar from '../components/Sidebar';
 import ChatContainer from '../components/ChatContainer';
 import NoChatSelected from '../components/NoChatSelected';
 import SearchModal from '../components/SearchModal';
+import AskModal from '../components/AskModal';
 
 const HomePage = () => {
 
-    const { selectedUser, isSearchOpen } = useChatStore();
+    const { selectedUser, isSearchOpen, isAskOpen } = useChatStore();
 
     return (
         <div className='h-screen bg-base-200'>
@@ -23,6 +24,7 @@ const HomePage = () => {
             </div>
 
             {isSearchOpen && <SearchModal />}
+            {isAskOpen && <AskModal />}
 
         </div>
     )

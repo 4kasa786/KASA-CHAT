@@ -14,6 +14,18 @@ const model = genAI.getGenerativeModel({
     systemInstruction: SYSTEM_INSTRUCTION,
 });
 
+// RAG (Phase 7): answer strictly from retrieved messages, with citations.
+const RAG_SYSTEM_INSTRUCTION = `You answer questions about a chat conversation.
+Use ONLY the numbered context messages provided. Do not use any outside knowledge.
+If the answer is not present in the context, reply exactly: "I couldn't find that in your chat."
+When you use a message, cite it inline like [1] or [2].
+Keep the answer short and direct.`;
+
+const ragModel = genAI.getGenerativeModel({
+    model: "gemini-2.5-flash",
+    systemInstruction: RAG_SYSTEM_INSTRUCTION,
+});
+
 const MAX_TRANSCRIPT_CHARS = 6000; // rough guard so a long history can't blow the context window
 const GEMINI_TIMEOUT_MS = 15000;
 
@@ -50,6 +62,34 @@ export const getAIReply = async (question, history = []) => {
         const result = await Promise.race([model.generateContent(prompt), timeout]);
         // .text() throws if the response was blocked by safety filters — let it
         // propagate so the controller's catch returns a friendly fallback.
+        return result.response.text();
+    } finally {
+        clearTimeout(timer);
+    }
+};
+
+// RAG answer (Phase 7). sources: [{ senderName, text }] already retrieved & ranked.
+// Returns an answer grounded ONLY in those messages, with [n] citations.
+export const getGroundedAnswer = async (question, sources = []) => {
+    if (!sources.length) return "I couldn't find that in your chat.";
+
+    // Number each source so the model can cite [1], [2], ... and label the speaker.
+    const context = sources
+        .map((s, i) => `[${i + 1}] ${s.senderName || "Unknown"}: ${s.text}`)
+        .join("\n");
+
+    const prompt = `Context messages:\n${context}\n\nQuestion: ${question}`;
+
+    let timer;
+    const timeout = new Promise((_, reject) => {
+        timer = setTimeout(
+            () => reject(new Error("Gemini request timed out")),
+            GEMINI_TIMEOUT_MS
+        );
+    });
+
+    try {
+        const result = await Promise.race([ragModel.generateContent(prompt), timeout]);
         return result.response.text();
     } finally {
         clearTimeout(timer);

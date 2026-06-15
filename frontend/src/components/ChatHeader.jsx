@@ -1,9 +1,9 @@
-import { X } from "lucide-react";
+import { X, Sparkles } from "lucide-react";
 import { useAuthStore } from "../store/useAuthStore";
 import { useChatStore } from "../store/useChatStore";
 
 const ChatHeader = () => {
-    const { selectedUser, setSelectedUser } = useChatStore();
+    const { selectedUser, setSelectedUser, openAsk } = useChatStore();
     const { onlineUsers } = useAuthStore();
 
     return (
@@ -26,10 +26,20 @@ const ChatHeader = () => {
                     </div>
                 </div>
 
-                {/* Close button */}
-                <button onClick={() => setSelectedUser(null)}>
-                    <X />
-                </button>
+                {/* Actions */}
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={openAsk}
+                        className="btn btn-sm btn-ghost gap-1"
+                        title="Ask AI about this chat"
+                    >
+                        <Sparkles className="size-4 text-primary" />
+                        <span className="hidden sm:inline">Ask AI</span>
+                    </button>
+                    <button onClick={() => setSelectedUser(null)} title="Close">
+                        <X />
+                    </button>
+                </div>
             </div>
         </div>
     );
