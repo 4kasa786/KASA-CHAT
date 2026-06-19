@@ -2,6 +2,7 @@ import User from "../models/user.model.js";
 import Message from "../models/message.model.js";
 import { getAIReply } from "../services/ai.js";
 import { getEmbedding } from "../services/embedding.js";
+import { checkAiRateLimit } from "../services/rateLimit.js";
 import { getAIBotId } from "../seeds/ai-bot.seed.js";
 import cloudinary from "../lib/cloudinary.js";
 import { getReceiverSocketId, io } from "../lib/socket.js";
@@ -81,6 +82,27 @@ export const sendMessage = async (req, res) => {
         if (text && text.trimStart().toLowerCase().startsWith("@ai")) {
             (async () => {
                 let botReplyText;
+
+                // Per-user sliding-window rate limit (5 @ai calls/min). On reject,
+                // post a friendly bot message and skip history + Gemini entirely.
+                const { allowed, retryAfterSec } = await checkAiRateLimit(senderId);
+                if (!allowed) {
+                    botReplyText = `You're messaging @ai too fast — please slow down and try again in ${retryAfterSec} second${retryAfterSec === 1 ? "" : "s"}.`;
+                    const botMessage = new Message({
+                        senderId: getAIBotId(),
+                        receiverId: senderId,
+                        text: botReplyText,
+                        isBot: true,
+                        conversationWith: receiverId,
+                    });
+                    await botMessage.save();
+                    const senderSock = getReceiverSocketId(senderId);
+                    if (senderSock) io.to(senderSock).emit("newMessage", botMessage);
+                    const receiverSock = getReceiverSocketId(receiverId);
+                    if (receiverSock) io.to(receiverSock).emit("newMessage", botMessage);
+                    return;
+                }
+
                 try {
                     // Fetch the last 20 messages of this DM for context — same 3-clause
                     // filter as getMessages, minus the message that just triggered the bot.

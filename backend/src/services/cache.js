@@ -1,17 +1,5 @@
-import Redis from "ioredis";
 import crypto from "crypto";
-
-// Dedicated Redis for Kasa (port 6380 — 6379 is taken by another project).
-// commandTimeout bounds every get/set: commands wait briefly for the initial
-// connect, but if Redis is down they reject within 1s so the caller falls back
-// to Gemini instead of hanging.
-const redis = new Redis(process.env.REDIS_URL || "redis://127.0.0.1:6380", {
-    maxRetriesPerRequest: 2,
-    commandTimeout: 1000,
-});
-
-redis.on("connect", () => console.log("Redis connected"));
-redis.on("error", (err) => console.error("Redis error:", err.message));
+import { redis } from "../lib/redis.js";
 
 // Normalize so trivially-different questions share one cache entry:
 // lowercase → strip leading "@ai" → collapse whitespace → trim.
