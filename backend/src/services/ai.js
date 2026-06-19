@@ -1,4 +1,5 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { getCachedAnswer, setCachedAnswer } from "./cache.js";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
@@ -45,6 +46,17 @@ const buildTranscript = (history = []) => {
 // question: the user's message with the leading "@ai" already stripped.
 // history: chronological [{ name, text }] of the recent DM (may be empty).
 export const getAIReply = async (question, history = []) => {
+    // Cache-aside (Phase 8): key on the normalized QUESTION only. Great for
+    // general/factual repeats ("what's 2+2?"); intentionally ignores history —
+    // see learnings.md for the stale-context tradeoff. Falls back to Gemini if
+    // Redis is down (getCachedAnswer returns null on error).
+    const cached = await getCachedAnswer(question);
+    if (cached !== null) {
+        console.log("[cache] HIT  @ai:", normalizeQuestionPreview(question));
+        return cached;
+    }
+    console.log("[cache] MISS @ai:", normalizeQuestionPreview(question));
+
     const transcript = buildTranscript(history);
     const prompt = transcript
         ? `Conversation so far:\n${transcript}\n\nLatest question: ${question}`
@@ -62,11 +74,16 @@ export const getAIReply = async (question, history = []) => {
         const result = await Promise.race([model.generateContent(prompt), timeout]);
         // .text() throws if the response was blocked by safety filters — let it
         // propagate so the controller's catch returns a friendly fallback.
-        return result.response.text();
+        const answer = result.response.text();
+        await setCachedAnswer(question, answer); // store for 1 hour
+        return answer;
     } finally {
         clearTimeout(timer);
     }
 };
+
+// Short preview of a question for cache hit/miss logs.
+const normalizeQuestionPreview = (q = "") => q.slice(0, 40).replace(/\s+/g, " ");
 
 // RAG answer (Phase 7). sources: [{ senderName, text }] already retrieved & ranked.
 // Returns an answer grounded ONLY in those messages, with [n] citations.
