@@ -4,6 +4,7 @@ import cookieParser from 'cookie-parser';
 import authRoutes from "./routes/auth.route.js";
 import messageRoutes from "./routes/message.route.js";
 import searchRoutes from "./routes/search.route.js";
+import presenceRoutes from "./routes/presence.route.js";
 import { connectDB } from './lib/db.js';
 import { seedAIBot } from './seeds/ai-bot.seed.js';
 import { warmUpEmbeddings } from './services/embedding.js';
@@ -26,6 +27,7 @@ app.use(cors({
 app.use('/api/auth', authRoutes);
 app.use('/api/messages', messageRoutes);
 app.use('/api/search', searchRoutes);
+app.use('/api/presence', presenceRoutes);
 
 if (process.env.NODE_ENV === "production") {
     app.use(express.static(path.join(__dirname, "../frontend/dist")));

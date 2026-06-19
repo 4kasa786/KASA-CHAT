@@ -12,7 +12,9 @@ export const useAuthStore = create((set, get) => ({
     isUpdatingProfile: false,
     isCheckingAuth: true,
     onlineUsers: [],
+    lastSeen: {},
     socket: null,
+    heartbeatInterval: null,
 
     checkAuth: async () => {
         try {
@@ -93,14 +95,33 @@ export const useAuthStore = create((set, get) => ({
         });
         socket.connect();
 
-        set({ socket: socket });
+        // Heartbeat keeps this user's Redis presence fresh (Phase 10).
+        const heartbeatInterval = setInterval(() => {
+            socket.emit("heartbeat");
+        }, 30000);
+
+        set({ socket, heartbeatInterval });
 
         socket.on("getOnlineUsers", (userIds) => {
             set({ onlineUsers: userIds });
         });
+
+        get().fetchPresence();
     },
     disconnectSocket: () => {
-        if (get().socket?.connected) get().socket.disconnect();
-        set({ socket: null });
+        const { socket, heartbeatInterval } = get();
+        if (heartbeatInterval) clearInterval(heartbeatInterval);
+        if (socket?.connected) socket.disconnect();
+        set({ socket: null, heartbeatInterval: null });
+    },
+
+    // Fetch last-seen timestamps (for offline "last seen X ago").
+    fetchPresence: async () => {
+        try {
+            const response = await axiosInstance.get("/presence");
+            set({ lastSeen: response.data.lastSeen || {} });
+        } catch {
+            // non-critical — green dots still work via the socket
+        }
     },
 }));
