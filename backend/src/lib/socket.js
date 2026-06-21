@@ -6,9 +6,14 @@ import { markSeen, markOffline, getOnlineUserIds } from '../services/presence.js
 const app = express();
 const server = http.createServer(app);
 
+// Allow localhost in dev + the deployed origin in prod (CLIENT_URL). The socket
+// connection's Origin must be listed here or Socket.IO rejects the handshake.
+const allowedOrigins = ["http://localhost:5173"];
+if (process.env.CLIENT_URL) allowedOrigins.push(process.env.CLIENT_URL);
+
 const io = new Server(server, {
     cors: {
-        origin: ["http://localhost:5173"],
+        origin: allowedOrigins,
     }
 })
 
