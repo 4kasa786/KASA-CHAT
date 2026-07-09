@@ -3,7 +3,11 @@ import dotenv from 'dotenv';
 import cookieParser from 'cookie-parser';
 import authRoutes from "./routes/auth.route.js";
 import messageRoutes from "./routes/message.route.js";
+import searchRoutes from "./routes/search.route.js";
+import presenceRoutes from "./routes/presence.route.js";
 import { connectDB } from './lib/db.js';
+import { seedAIBot } from './seeds/ai-bot.seed.js';
+import { warmUpEmbeddings } from './services/embedding.js';
 import cors from 'cors';
 import { app, server } from './lib/socket.js';
 import path from 'path';
@@ -15,13 +19,19 @@ const __dirname = path.resolve();
 
 app.use(express.json({ limit: '50mb' })); // increase JSON body size limit
 app.use(cookieParser());
+// Allow localhost in dev + the deployed frontend origin in prod (CLIENT_URL).
+const allowedOrigins = ["http://localhost:5173"];
+if (process.env.CLIENT_URL) allowedOrigins.push(process.env.CLIENT_URL);
+
 app.use(cors({
-    origin: "http://localhost:5173",
+    origin: allowedOrigins,
     credentials: true,
 }))
 
 app.use('/api/auth', authRoutes);
 app.use('/api/messages', messageRoutes);
+app.use('/api/search', searchRoutes);
+app.use('/api/presence', presenceRoutes);
 
 if (process.env.NODE_ENV === "production") {
     app.use(express.static(path.join(__dirname, "../frontend/dist")));
@@ -31,7 +41,10 @@ if (process.env.NODE_ENV === "production") {
     })
 }
 
-server.listen(port, () => {
+server.listen(port, async () => {
     console.log("Server is running on port " + port);
-    connectDB();
+    await connectDB();
+    await seedAIBot();
+    const warmMs = await warmUpEmbeddings();
+    console.log(`Embedding model warmed up in ${warmMs}ms`);
 })

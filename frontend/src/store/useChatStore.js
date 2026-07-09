@@ -10,6 +10,23 @@ export const useChatStore = create((set, get) => ({
     isUsersLoading: false,
     isMessagesLoading: false,
 
+    // --- Semantic search (Phase 6) ---
+    searchResults: [],
+    isSearching: false,
+    searchError: null,
+    hasSearched: false,
+    isSearchOpen: false,
+    scrollToMessageId: null,
+
+    // --- Ask AI about this chat / RAG (Phase 7, streaming) ---
+    isAskOpen: false,
+    askAnswer: "",
+    askSources: [],
+    isAsking: false,
+    isStreaming: false,
+    askError: null,
+    hasAsked: false,
+
 
     getUsers: async () => {
         set({ isUsersLoading: true });
@@ -36,10 +53,10 @@ export const useChatStore = create((set, get) => ({
         }
     },
     sendMessage: async (messageData) => {
-        const { selectedUser, messages } = get();
+        const { selectedUser } = get();
         try {
             const response = await axiosInstance.post(`/messages/send/${selectedUser._id}`, messageData);
-            set({ messages: [...messages, response.data] });
+            set((state) => ({ messages: [...state.messages, response.data] }));
 
         } catch (err) {
             toast.error(err.response?.data?.message || "Error sending message");
@@ -49,19 +66,17 @@ export const useChatStore = create((set, get) => ({
     },
 
     subscribeToMessages: () => {
-        const { selectedUser } = get();
-        if (!selectedUser) return;
+        if (!get().selectedUser) return;
 
         const socket = useAuthStore.getState().socket;
 
-
         socket.on("newMessage", (newMessage) => {
-            const isMessageSentFromSelectedUser = newMessage.senderId === selectedUser._id;
-            if (!isMessageSentFromSelectedUser) return;
-            set({
-                messages: [...get().messages, newMessage]
-            })
-
+            const { selectedUser } = get();
+            if (!selectedUser) return;
+            const isFromSelectedUser = newMessage.senderId === selectedUser._id;
+            const isBotInCurrentChat = newMessage.isBot === true && newMessage.conversationWith === selectedUser._id;
+            if (!isFromSelectedUser && !isBotInCurrentChat) return;
+            set((state) => ({ messages: [...state.messages, newMessage] }));
         });
     },
 
@@ -73,5 +88,113 @@ export const useChatStore = create((set, get) => ({
 
     setSelectedUser: (selectedUser) => {
         set({ selectedUser });
-    }
+    },
+
+    // --- Semantic search actions (Phase 6) ---
+    openSearch: () => set({ isSearchOpen: true }),
+    closeSearch: () =>
+        set({ isSearchOpen: false, searchResults: [], searchError: null, hasSearched: false }),
+
+    searchMessages: async (query) => {
+        if (!query.trim()) {
+            set({ searchResults: [], searchError: null, hasSearched: false });
+            return;
+        }
+        set({ isSearching: true, searchError: null });
+        try {
+            const response = await axiosInstance.post('/search', { query });
+            set({ searchResults: response.data, hasSearched: true });
+        } catch (err) {
+            set({ searchError: err.response?.data?.error || "Search failed. Please try again." });
+        } finally {
+            set({ isSearching: false });
+        }
+    },
+
+    // Click a search result → open that conversation and flag the message to scroll to.
+    goToMessage: (result) => {
+        const { users } = get();
+        const myId = useAuthStore.getState().authUser?._id;
+
+        // Figure out the "other" person in that message's conversation.
+        let otherId;
+        if (result.isBot) otherId = result.conversationWith;
+        else otherId = result.senderId === myId ? result.receiverId : result.senderId;
+
+        const otherUser = users.find((u) => u._id === otherId);
+        if (!otherUser) {
+            toast.error("Couldn't open that conversation");
+            return;
+        }
+
+        set({
+            selectedUser: otherUser,
+            scrollToMessageId: result._id,
+            isSearchOpen: false,
+            searchResults: [],
+            hasSearched: false,
+            // also close the Ask-AI panel if a citation was clicked
+            isAskOpen: false,
+        });
+    },
+
+    setScrollToMessageId: (id) => set({ scrollToMessageId: id }),
+
+    // --- Ask AI about this chat / RAG (Phase 7) ---
+    openAsk: () => set({ isAskOpen: true, askAnswer: "", askSources: [], askError: null, hasAsked: false }),
+    closeAsk: () => set({ isAskOpen: false, askAnswer: "", askSources: [], askError: null, hasAsked: false }),
+
+    // Streams the grounded answer over SSE (axios can't stream → raw fetch).
+    askAboutChat: async (question) => {
+        const { selectedUser } = get();
+        if (!question.trim() || !selectedUser) return;
+        set({ isAsking: true, isStreaming: true, askError: null, askAnswer: "", askSources: [], hasAsked: false });
+
+        try {
+            const res = await fetch(`${axiosInstance.defaults.baseURL}/search/ask`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                credentials: "include",
+                body: JSON.stringify({ question, userId: selectedUser._id }),
+            });
+            if (!res.ok || !res.body) throw new Error("Request failed");
+
+            const reader = res.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = "";
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+
+                // SSE events are separated by a blank line.
+                const events = buffer.split("\n\n");
+                buffer = events.pop(); // keep any incomplete trailing event
+                for (const block of events) {
+                    if (!block.trim()) continue;
+                    const event = block.match(/^event: (.+)$/m)?.[1] || "message";
+                    const dataLine = block.match(/^data: (.+)$/m)?.[1];
+                    if (!dataLine) continue;
+                    const data = JSON.parse(dataLine);
+
+                    if (event === "sources") {
+                        set({ askSources: data });
+                    } else if (event === "chunk") {
+                        set((state) => ({
+                            askAnswer: state.askAnswer + data.text,
+                            hasAsked: true,
+                            isAsking: false, // first chunk arrived → show the answer
+                        }));
+                    } else if (event === "error") {
+                        set({ askError: data.error || "Couldn't get an answer." });
+                    }
+                }
+            }
+        } catch {
+            set({ askError: "Couldn't get an answer. Please try again." });
+        } finally {
+            set({ isAsking: false, isStreaming: false });
+        }
+    },
 }))
