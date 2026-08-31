@@ -43,7 +43,7 @@ export const searchMessages = async (req, res) => {
                     isBot: 1,
                     conversationWith: 1,
                     createdAt: 1,
-                    score: { $meta: "vectorSearchScore" },
+                    score: { $meta: "vectorSearchScore" }
                 },
             },
         ]);
